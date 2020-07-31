@@ -217,7 +217,40 @@ extract_nmea(<<"GLL">>, Params) ->
   catch
     error:_ -> {error, {parseError, gga, Params}}
   end;
-
+%% $--TLL,TID,Lat,LatPole,Lon,LonPole,TName,UTC,Status,R
+%% $--TLL,xx,llll.ll,a,yyyyy.yy,a,c--c,hhmmss.ss,a,a*hh
+%% TID - (xx) Target number  (0-99)
+%% Lat - (llll.l) Target Latitude
+%% LatPole - (a) N or S, N=north, S=south
+%% Lon - (yyyyy.yy) Target Longitude
+%% LonPole - (a) E or W, E=east, W=west
+%% TName - (c--c) Target name
+%% UTC - (hhmmss.ss)
+%% Status - (a) Status (L=lost, Q=acquisition, T=tracking)
+%% R - (a) reference target; null (,,)= otherwise
+extract_nmea(<<"TLL">>, Params) ->
+  try
+    [BTID,BLat,BN,BLon,BE,BTName,BUTC,BStatus,BReference] =
+      binary:split(Params,<<",">>,[global]),
+    [UTC, Lat, Lon] = extract_geodata(BUTC, BLat, BN, BLon, BE),
+    TID = safe_binary_to_integer(BTID),
+    TName = binary_to_list(BTName),
+    Status =
+    case BStatus of
+      <<"L">> -> lost;
+      <<"Q">> -> acquisition;
+      <<"T">> -> tracking
+    end,
+    R =
+    case BReference of
+      <<"null">> -> nothing;
+      <<"">> -> nothing;
+      _ -> binary_to_list(BReference)
+    end,
+    {nmea, {tll, TID, Lat, Lon, TName, UTC, Status, R}}
+  catch
+    error:_ -> {error, {parseError, tll, Params}}
+  end;
 %% $--ZDA,hhmmss.ss,xx,xx,xxxx,xx,xx
 %% hhmmss.ss = UTC
 %% xx = Day, 01 to 31
@@ -239,7 +272,6 @@ extract_nmea(<<"ZDA">>, Params) ->
   catch
     error:_ -> {error, {parseError, zda, Params}}
   end;
-
 %% LBL location
 %% $-EVOLBL,Type,r,Loc_no,Ser_no,Lat,Lon,Alt,Pressure,,
 %% Alt - meters
@@ -757,7 +789,6 @@ extract_nmea(<<"EVOSSB">>, Params) ->
   catch
     error:_ -> {error, {parseError, evossb, Params}}
   end;
-
 %% $PEVOSSA,UTC,TID,CF,Tr,B,E,Acc,RSSI,Integrity,ParamA,ParamB
 %% UTC hhmmss.ss
 %% TID transponder ID
@@ -1252,6 +1283,22 @@ build_gll(Lat,Lon,UTC,Status,Mode) ->
           end,
   (["GPGLL",SLat,SLon,SUTC,SStatus,SMode]).
 
+%%xx,llll.ll,a,yyyyy.yy,a,c--c,hhmmss.ss,a,a
+build_tll(TID,Lat,Lon,Name,UTC,Status,Ref) ->
+  SUTC = utc_format(UTC),
+  SLat = lat_format(Lat),
+  SLon = lon_format(Lon),
+  SStatus =
+  case Status of
+    lost -> "L";
+    acquisition -> "Q";
+    tracking -> "T"
+  end,
+  STID  = safe_fmt(["~2.10.0B"],[TID],","),
+  SName = safe_fmt(["~s"],[Name],","),
+  Rest  = safe_fmt(["~s", "~s"],[SStatus, Ref],","),
+  (["SNTLL",STID,SLat,SLon,SName,SUTC,Rest]).
+
 build_evolbl(Type,Loc_no,Ser_no,Lat_rad,Lon_rad,Alt,Pressure) ->
   S = safe_fmt(["~s","~s","~B","~B","~.7.0f","~.7.0f","~.2.0f","~.2.0f"],
                [Type,"r",Loc_no,Ser_no,Lat_rad,Lon_rad,Alt,Pressure],","),
@@ -1697,6 +1744,8 @@ from_term_helper(Sentense) ->
       build_zda(UTC,DD,MM,YY,Z1,Z2);
     {gll,Lat,Lon,UTC,Status,Mode} ->
       build_gll(Lat,Lon,UTC,Status,Mode);
+    {tll,TID,Lat,Lon,Name,UTC,Status,Ref} ->
+      build_tll(TID,Lat,Lon,Name,UTC,Status,Ref);
     {evolbl,Type,Loc_no,Ser_no,Lat_rad,Lon_rad,Alt,Pressure} ->
       build_evolbl(Type,Loc_no,Ser_no,Lat_rad,Lon_rad,Alt,Pressure);
     {evolbp,UTC,Basenodes,Address,Status,Lat_rad,Lon_rad,Alt,Pressure,SMean,Std} ->
