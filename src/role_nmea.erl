@@ -191,28 +191,34 @@ extract_nmea(<<"GGA">>, Params) ->
     error:_ -> {error, {parseError, gga, Params}}
   end;
 
+%% $--GLL,llll.ll,a,yyyyy.yy,a,hhmmss.ss,A,a*hh<CR><LF>
 %% llll.ll,a,yyyyy.yy,a,hhmmss.ss,A,a
 %% 1    = Latitude
 %% 2    = N or S
 %% 3    = Longitude
 %% 4    = E or W
 %% 5    = UTC of Position
-%% 6    = GPS quality indicator (0=invalid; 1=GPS fix; 2=Diff. GPS fix)
-%% 7    = Status
-%% 8    = Mode
+%% 6    = Positioning system status field
+%% 7    = Positioning system mode indicator
 extract_nmea(<<"GLL">>, Params) ->
   try
     [BLat,BN,BLon,BE,BUTC,BStatus,BMode] = binary:split(Params,<<",">>,[global]),
     [UTC, Lat, Lon] = extract_geodata(BUTC, BLat, BN, BLon, BE),
-    Status = case BStatus of <<"A">> -> active; _ -> void end,
-    Mode = case BMode of
-                <<"A">> -> auto;
-                <<"D">> -> differential;
-                <<"E">> -> estimated;
-                <<"M">> -> manual;
-                <<"S">> -> simulated;
-                _ -> none
-            end,
+    Status =
+    case BStatus of
+      <<"A">> -> data_valid;
+      <<"V">> -> data_not_valid
+    end,
+
+    Mode =
+    case BMode of
+        <<"A">> -> auto;
+        <<"D">> -> differential;
+        <<"E">> -> estimated;
+        <<"M">> -> manual;
+        <<"S">> -> simulated;
+        <<"N">> -> data_not_valid
+    end,
     {nmea, {gll,Lat,Lon,UTC,Status,Mode}}
   catch
     error:_ -> {error, {parseError, gga, Params}}
@@ -1272,16 +1278,23 @@ build_gll(Lat,Lon,UTC,Status,Mode) ->
   SUTC = utc_format(UTC),
   SLat = lat_format(Lat),
   SLon = lon_format(Lon),
-  SStatus = case Status of active -> "A"; _ -> "V" end,
-  SMode = case Mode of
-              auto -> "A";
-              differential -> "D";
-              estimated -> "E";
-              manual -> "M";
-              simulated -> "S";
-              _ -> "N"
-          end,
-  (["GPGLL",SLat,SLon,SUTC,SStatus,SMode]).
+  SStatus =
+  case Status of
+    data_valid -> "A";
+    data_not_valid -> "V"
+  end,
+
+  SMode =
+  case Mode of
+      auto -> "A";
+      differential -> "D";
+      estimated -> "E";
+      manual -> "M";
+      simulated -> "S";
+      data_not_valid -> "N"
+  end,
+  Rest  = safe_fmt(["~s", "~s"],[SStatus, SMode],","),
+  (["GPGLL",SLat,SLon,SUTC,Rest]).
 
 %%xx,llll.ll,a,yyyyy.yy,a,c--c,hhmmss.ss,a,a
 build_tll(TID,Lat,Lon,Name,UTC,Status,Ref) ->
