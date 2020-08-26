@@ -155,7 +155,7 @@ code_change(_, Pid, _) ->
   {ok, Pid}.
 
 terminate(Reason, #sm{module = Module} = SM) ->
-  logger:info("module: ~p, id ~p~nterminate: ~p", [Module, SM#sm.id, Reason]),
+  logger:error("module: ~p, id ~p~nterminate: ~p", [Module, SM#sm.id, Reason]),
   Module:stop(SM),
   gen_server:cast(SM#sm.id, {stop, SM, fsm_crashed}).
 
