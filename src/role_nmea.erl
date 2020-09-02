@@ -279,7 +279,7 @@ extract_nmea(<<"ZDA">>, Params) ->
     error:_ -> {error, {parseError, zda, Params}}
   end;
 %% LBL location
-%% $-EVOLBL,Type,r,Loc_no,Ser_no,Lat,Lon,Alt,Pressure,,
+%% $-EVOLBL,Type,r,Loc_no,Ser_no,Lat,Lon,Alt,Pressure,EllpsA,EllpsB,EllpsHdg
 %% Alt - meters
 %% Pressure - dbar
 %% Type: I or C
@@ -288,11 +288,11 @@ extract_nmea(<<"ZDA">>, Params) ->
 %% D - undefined position
 extract_nmea(<<"EVOLBL">>, Params) ->
   try
-    [BType,_,BLoc,BSer,BLat,BLon,BAlt,BPressure,_,_,_] = binary:split(Params,<<",">>,[global]),
+    [BType,_,BLoc,BSer,BLat,BLon,BAlt,BPressure,BEllpsA,BEllpsB,BEllpsHdg] = binary:split(Params,<<",">>,[global]),
     Type = binary_to_list(BType),
     [Loc,Ser] = [safe_binary_to_integer(X) || X <- [BLoc,BSer]],
-    [Lat,Lon,Alt,Pressure] = [safe_binary_to_float(X) || X <- [BLat,BLon,BAlt,BPressure]],
-    {nmea,{evolbl, Type, Loc, Ser, Lat, Lon, Alt, Pressure}}
+    [Lat,Lon,Alt,Pressure,EllpsA,EllpsB,EllpsHdg] = [safe_binary_to_float(X) || X <- [BLat,BLon,BAlt,BPressure,BEllpsA,BEllpsB,BEllpsHdg]],
+    {nmea,{evolbl, Type, Loc, Ser, Lat, Lon, Alt, Pressure, EllpsA, EllpsB, EllpsHdg}}
   catch
     error:_ -> {error, {parseError, evolbl, Params}}
   end;
@@ -1312,10 +1312,10 @@ build_tll(TID,Lat,Lon,Name,UTC,Status,Ref) ->
   Rest  = safe_fmt(["~s", "~s"],[SStatus, Ref],","),
   (["SNTLL",STID,SLat,SLon,SName,SUTC,Rest]).
 
-build_evolbl(Type,Loc_no,Ser_no,Lat_rad,Lon_rad,Alt,Pressure) ->
-  S = safe_fmt(["~s","~s","~B","~B","~.7.0f","~.7.0f","~.2.0f","~.2.0f"],
-               [Type,"r",Loc_no,Ser_no,Lat_rad,Lon_rad,Alt,Pressure],","),
-  (["PEVOLBL",S,",,,"]).
+build_evolbl(Type,Loc_no,Ser_no,Lat_rad,Lon_rad,Alt,Pressure,EllpsA,EllpsB,EllpsHdg) ->
+  S = safe_fmt(["~s","~s","~B","~B","~.7.0f","~.7.0f","~.2.0f","~.2.0f","~.2.0f","~.2.0f","~.1.0f"],
+               [Type,"r",Loc_no,Ser_no,Lat_rad,Lon_rad,Alt,Pressure,EllpsA,EllpsB,EllpsHdg],","),
+  (["PEVOLBL",S]).
 
 build_evolbp(UTC, Basenodes, Address, Status, Lat_rad, Lon_rad, Alt, Pressure, SMean, Std) ->
   S = erlang:trunc(UTC),
@@ -1759,8 +1759,8 @@ from_term_helper(Sentense) ->
       build_gll(Lat,Lon,UTC,Status,Mode);
     {tll,TID,Lat,Lon,Name,UTC,Status,Ref} ->
       build_tll(TID,Lat,Lon,Name,UTC,Status,Ref);
-    {evolbl,Type,Loc_no,Ser_no,Lat_rad,Lon_rad,Alt,Pressure} ->
-      build_evolbl(Type,Loc_no,Ser_no,Lat_rad,Lon_rad,Alt,Pressure);
+    {evolbl,Type,Loc_no,Ser_no,Lat_rad,Lon_rad,Alt,Pressure,EllpsA,EllpsB,EllpsHdg} ->
+      build_evolbl(Type,Loc_no,Ser_no,Lat_rad,Lon_rad,Alt,Pressure,EllpsA,EllpsB,EllpsHdg);
     {evolbp,UTC,Basenodes,Address,Status,Lat_rad,Lon_rad,Alt,Pressure,SMean,Std} ->
       build_evolbp(UTC,Basenodes,Address,Status,Lat_rad,Lon_rad,Alt,Pressure,SMean,Std);
     {simsvt,Total,Idx,Lst} ->
