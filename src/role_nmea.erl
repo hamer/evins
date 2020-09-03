@@ -288,11 +288,12 @@ extract_nmea(<<"ZDA">>, Params) ->
 %% D - undefined position
 extract_nmea(<<"EVOLBL">>, Params) ->
   try
-    [BType,_,BLoc,BSer,BLat,BLon,BAlt,BPressure,BEllpsA,BEllpsB,BEllpsHdg] = binary:split(Params,<<",">>,[global]),
+    [BType,BFrame,BLoc,BSer,BLat,BLon,BAlt,BPressure,BEllpsA,BEllpsB,BEllpsHdg] = binary:split(Params,<<",">>,[global]),
     Type = binary_to_list(BType),
+    Frame = binary_to_list(BFrame),
     [Loc,Ser] = [safe_binary_to_integer(X) || X <- [BLoc,BSer]],
     [Lat,Lon,Alt,Pressure,EllpsA,EllpsB,EllpsHdg] = [safe_binary_to_float(X) || X <- [BLat,BLon,BAlt,BPressure,BEllpsA,BEllpsB,BEllpsHdg]],
-    {nmea,{evolbl, Type, Loc, Ser, Lat, Lon, Alt, Pressure, EllpsA, EllpsB, EllpsHdg}}
+    {nmea,{evolbl, Type, Frame, Loc, Ser, Lat, Lon, Alt, Pressure, EllpsA, EllpsB, EllpsHdg}}
   catch
     error:_ -> {error, {parseError, evolbl, Params}}
   end;
@@ -1312,9 +1313,9 @@ build_tll(TID,Lat,Lon,Name,UTC,Status,Ref) ->
   Rest  = safe_fmt(["~s", "~s"],[SStatus, Ref],","),
   (["SNTLL",STID,SLat,SLon,SName,SUTC,Rest]).
 
-build_evolbl(Type,Loc_no,Ser_no,Lat_rad,Lon_rad,Alt,Pressure,EllpsA,EllpsB,EllpsHdg) ->
+build_evolbl(Type,Frame,Loc_no,Ser_no,Lat_rad,Lon_rad,Alt,Pressure,EllpsA,EllpsB,EllpsHdg) ->
   S = safe_fmt(["~s","~s","~B","~B","~.7.0f","~.7.0f","~.2.0f","~.2.0f","~.2.0f","~.2.0f","~.1.0f"],
-               [Type,"r",Loc_no,Ser_no,Lat_rad,Lon_rad,Alt,Pressure,EllpsA,EllpsB,EllpsHdg],","),
+               [Type,Frame,Loc_no,Ser_no,Lat_rad,Lon_rad,Alt,Pressure,EllpsA,EllpsB,EllpsHdg],","),
   (["PEVOLBL",S]).
 
 build_evolbp(UTC, Basenodes, Address, Status, Lat_rad, Lon_rad, Alt, Pressure, SMean, Std) ->
@@ -1759,8 +1760,8 @@ from_term_helper(Sentense) ->
       build_gll(Lat,Lon,UTC,Status,Mode);
     {tll,TID,Lat,Lon,Name,UTC,Status,Ref} ->
       build_tll(TID,Lat,Lon,Name,UTC,Status,Ref);
-    {evolbl,Type,Loc_no,Ser_no,Lat_rad,Lon_rad,Alt,Pressure,EllpsA,EllpsB,EllpsHdg} ->
-      build_evolbl(Type,Loc_no,Ser_no,Lat_rad,Lon_rad,Alt,Pressure,EllpsA,EllpsB,EllpsHdg);
+    {evolbl,Type,Frame,Loc_no,Ser_no,Lat_rad,Lon_rad,Alt,Pressure,EllpsA,EllpsB,EllpsHdg} ->
+      build_evolbl(Type,Frame,Loc_no,Ser_no,Lat_rad,Lon_rad,Alt,Pressure,EllpsA,EllpsB,EllpsHdg);
     {evolbp,UTC,Basenodes,Address,Status,Lat_rad,Lon_rad,Alt,Pressure,SMean,Std} ->
       build_evolbp(UTC,Basenodes,Address,Status,Lat_rad,Lon_rad,Alt,Pressure,SMean,Std);
     {simsvt,Total,Idx,Lst} ->
