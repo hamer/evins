@@ -283,7 +283,7 @@ extract_nmea(<<"ZDA">>, Params) ->
 %% Alt - meters
 %% Pressure - dbar
 %% Type: I or C
-%% Frame: N (ned) or G (geod), r (reserved)
+%% Frame: N (ned), G (geod), L (local), r (reserved)
 %% I - initialized georeferenced position
 %% C - calibrated georeferenced position
 %% D - undefined position
@@ -305,7 +305,7 @@ extract_nmea(<<"EVOLBL">>, Params) ->
 %% Tp_array c--c %% B01B02B04 %% our case 1:2:3:4
 %% Type a- %% R1 or T1 %% in our case just address
 %% Status A %% OK | or others
-%% Frame: N (ned) or G (geod), r (reserved)
+%% Frame: N (ned), G (geod), L (local), r (reserved)
 extract_nmea(<<"EVOLBP">>, Params) ->
   try
     [BUTC,BArray,BAddress,BStatus,BFrame,BLat,BLon,BAlt,BPressure,BMa,BMi,BDir,Bsmean,Bstd] = binary:split(Params,<<",">>,[global]),
@@ -1013,8 +1013,13 @@ extract_nmea(<<"EVOCTL">>, <<"QLBL,TX,",Params/binary>>) ->
 extract_nmea(<<"EVOCTL">>, <<"QLBL,RX">>) ->
   {nmea, {evoctl, qlbl, #{command => stop}}};
 %% PEVOCTL,QLBL,CAL
-extract_nmea(<<"EVOCTL">>, <<"QLBL,CAL">>) ->
-  {nmea, {evoctl, qlbl, #{command => calibrate}}};
+extract_nmea(<<"EVOCTL">>, <<"QLBL,CAL,",Params/binary>>) ->
+  try
+    Frame = binary_to_integer(Params),
+    {nmea, {evoctl, qlbl, #{frame => Frame, command => calibrate}}}
+  catch
+    error:_ ->{error, {parseError, evoctl, Params}}
+  end;
 extract_nmea(<<"EVOCTL">>, Params) ->
   {error, {parseError, evoctl, Params}};
 
@@ -1598,8 +1603,9 @@ build_evoctl(qlbl, #{command := transmit, source := Src, code := Code, counter :
             [Src,Code,Cnt],",")];
 build_evoctl(qlbl, #{command := stop}) ->
   ["PEVOCTL,QLBL,RX"];
-build_evoctl(qlbl, #{command := calibrate}) ->
-  ["PEVOCTL,QLBL,CAL"].
+build_evoctl(qlbl, #{frame := Frame, command := calibrate}) ->
+  ["PEVOCTL,QLBL,CAL",
+   safe_fmt(["~B"],[Frame],",")].
 
 %% $-EVORCT,TX,TX_phy,Lat,LatS,Lon,LonS,Alt,S_gps,Pressure,S_pressure,Yaw,Pitch,Roll,S_ahrs,LAx,LAy,LAz,HL
 build_evorct(TX_utc,TX_phy,{Lat,Lon,Alt,GPSS},{P,PS},{Yaw,Pitch,Roll,AHRSS},{Lx,Ly,Lz},HL) ->
