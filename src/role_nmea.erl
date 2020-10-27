@@ -1012,6 +1012,9 @@ extract_nmea(<<"EVOCTL">>, <<"QLBL,TX,",Params/binary>>) ->
 %% PEVOCTL,QLBL,RX
 extract_nmea(<<"EVOCTL">>, <<"QLBL,RX">>) ->
   {nmea, {evoctl, qlbl, #{command => stop}}};
+%% PEVOCTL,QLBL,RST
+extract_nmea(<<"EVOCTL">>, <<"QLBL,RST">>) ->
+  {nmea, {evoctl, qlbl, #{command => reset}}};
 %% PEVOCTL,QLBL,CAL,<frame>
 extract_nmea(<<"EVOCTL">>, <<"QLBL,CAL,",Params/binary>>) ->
   try
@@ -1608,6 +1611,8 @@ build_evoctl(qlbl, #{command := transmit, source := Src, code := Code, counter :
             [Src,Code,Cnt],",")];
 build_evoctl(qlbl, #{command := stop}) ->
   ["PEVOCTL,QLBL,RX"];
+build_evoctl(qlbl, #{command := reset}) ->
+  ["PEVOCTL,QLBL,RST"];
 build_evoctl(qlbl, #{frame := Frame, command := calibrate}) ->
   ["PEVOCTL,QLBL,CAL",
    safe_fmt(["~p"],[Frame],",")].
@@ -1762,6 +1767,7 @@ build_evoerr(Report) ->
   Msg = 
     case Report of
       out_of_range -> "out of range";
+      out_of_context -> "out of context";
       _ when is_atom(Report) -> atom_to_list(Report);
       _ when is_list(Report) -> Report;
       _ when is_binary(Report) -> binary_to_list(Report);
