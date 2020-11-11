@@ -1164,6 +1164,36 @@ extract_nmea(<<"SIMSSB">>, Params) ->
     error:_ -> {error, {parseError, simssb, Params}}
   end;
 
+%% $PSIMSNS,171326.53,,1,,6,-4,,252,,30,0,,M01*16
+extract_nmea(<<"SIMSNS">>, Params) ->
+  try
+    [BUTC,BPItem,BTNum,BTID,BRoll,BPitch,BHeave,BHeading,BTag,BCParams,BTAge,_BEmpty,BMSlave] = binary:split(Params,<<",">>,[global]),
+    UTC = extract_utc(BUTC),
+    [TNum,TID,CParams,Tag] = [safe_binary_to_integer(V) || V <- [BTNum,BTID,BCParams,BTag]],
+    [Roll,Pitch,Heave,Heading,TAge] = [safe_binary_to_float(V) || V <- [BRoll,BPitch,BHeave,BHeading,BTAge]],
+    [PItem,MSlave] = [binary_to_list(V) || V <- [BPItem,BMSlave]],
+    {nmea, {simsns,UTC,PItem,TNum,TID,Roll,Pitch,Heave,Heading,Tag,CParams,TAge,MSlave}}
+  catch
+    error:_ -> {error, {parseError, simsns, Params}}
+  end;
+
+%% $PSIMGPS,120805171326.92,G,5254.9098940,N,01341.6961120,E*1B
+extract_nmea(<<"SIMGPS">>, Params) ->
+  try
+    [BDUTC,BGeo,BLat,BLatPole,BLon,BLonPole] = binary:split(Params,<<",">>,[global]),
+    CS = case BGeo of
+             <<"G">> -> geod;
+             _ -> utm
+         end,
+    <<BDD:2/binary,BMM:2/binary,BYY:2/binary,BUTC/binary>> = BDUTC,
+    [DD,MM,YY] = [safe_binary_to_integer(X) || X <- [BDD,BMM,BYY]],
+    Date = {2000 + YY, MM, DD},
+    [UTC, Lat, Lon] = extract_geodata(BUTC, BLat, BLatPole, BLon, BLonPole),
+    {nmea, {simgps,UTC,Date,CS,Lat,Lon}}
+  catch
+    error:_ -> {error, {parseError, simgps, Params}}
+  end;
+
 % $PHTRO,x.xx,a,y.yy,b*hh<CR><LF>
 %   x.xx is the pitch in degrees
 %       a is ‘M’ for bow up
@@ -1798,6 +1828,30 @@ build_simssb(UTC,Addr,S,Err,CS,FS,X,Y,Z,Acc,AddT,Add1,Add2) ->
                     [Addr, SS, Err, SCS, SHS, SFS, X, Y, Depth, Acc, AddT, Add1, Add2], ",")
           ]).
 
+%% $PSIMSNS,171326.53,,1,,6,-4,,252,,30,0,,M01*16
+build_simsns(UTC,PItem,TNum,TID,Roll,Pitch,Heave,Heading,Tag,CParams,TAge,MSlave) ->
+  SUTC = utc_format(UTC),
+  (["PSIMSNS",SUTC,
+           safe_fmt(["~s","~B","~B","~.2.0f","~.2.0f","~.2.0f","~.2.0f","~s","~B","~.2.0f","~s","~s"],
+                    [PItem,TNum,TID,Roll,Pitch,Heave,Heading,Tag,CParams,TAge,nothing,MSlave], ",")
+          ]).
+
+%% $PSIMGPS,120805171326.92,G,5254.9098940,N,01341.6961120,E*1B
+build_simgps(UTC,Date,CS,Lat,Lon) ->
+  {YY,MM,DD} = Date,
+  [_|SUTC] = utc_format(UTC),
+  SDate = io_lib:format("~2.10.0B~2.10.0B~2.10.0B~s",[YY rem 100,MM,DD,SUTC]),
+  SCS = case CS of
+            geod -> "G";
+            _ -> "U"
+        end,
+  [_|SLat] = lat_format(Lat),
+  [_|SLon] = lon_format(Lon),
+  (["PSIMGPS",
+           safe_fmt(["~s","~s","~s","~s"],
+                    [SDate,SCS,SLat,SLon], ",")
+          ]).
+
 from_term_helper(Sentense) ->
   case Sentense of
     {rmc,UTC,Status,Lat,Lon,Speed,Tangle,Date,Magvar} ->
@@ -1894,6 +1948,10 @@ from_term_helper(Sentense) ->
       build_hoct(1,UTC,TmS,Lt,Hd,HdS,Rl,RlS,Pt,PtS,HvI,HvS,Hv,Sr,Sw,HvR,SrR,SwR,HdR);
     {simssb, UTC,Addr,S,Err,CS,FS,X,Y,Z,Acc,AddT,Add1,Add2} ->
       build_simssb(UTC,Addr,S,Err,CS,FS,X,Y,Z,Acc,AddT,Add1,Add2);
+    {simsns,UTC,PItem,TNum,TID,Roll,Pitch,Heave,Heading,Tag,CParams,TAge,MSlave} ->
+      build_simsns(UTC,PItem,TNum,TID,Roll,Pitch,Heave,Heading,Tag,CParams,TAge,MSlave);
+    {simgps,UTC,Date,CS,Lat,Lon} ->
+      build_simgps(UTC,Date,CS,Lat,Lon);
     _ -> ""
   end.
 
