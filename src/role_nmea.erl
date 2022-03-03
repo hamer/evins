@@ -1209,6 +1209,7 @@ extract_nmea(<<"SIMSSB">>, Params) ->
                    {<<"C">>, <<"H">>} -> {lf, 1};
                    {<<"C">>, <<"E">>} -> {enu, 1};
                    {<<"C">>, <<"N">>} -> {ned, 1};
+                   {<<"R">>, <<"N">>} -> {rgeod, -1};
                    {<<"R">>, <<"G">>} -> {geod, -1}
                end,
     FS = case BFS of
@@ -1217,7 +1218,14 @@ extract_nmea(<<"SIMSSB">>, Params) ->
              <<"R">> -> reconstructed
          end,
 
-    [X, Y, Depth, Acc, Add1, Add2] = [safe_binary_to_float(X) || X <- [BX, BY, BDepth, BAcc, BAdd1, BAdd2]],
+    [X, Y] =
+    case CS of
+        rgeod ->
+            R2D = 180.0 / math:pi(),
+            [safe_binary_to_float(X) * R2D || X <- [BX, BY]];
+        _ -> [safe_binary_to_float(X) || X <- [BX, BY]]
+    end,
+    [Depth, Acc, Add1, Add2] = [safe_binary_to_float(X) || X <- [BDepth, BAcc, BAdd1, BAdd2]],
     Z = case Depth of nothing -> nothing; _ -> Depth * DS end,
 
     {nmea, {simssb,UTC,Addr,S,Err,CS,FS,X,Y,Z,Acc,AddT,Add1,Add2}}
@@ -1917,16 +1925,24 @@ build_dbt(Depth) ->
   (io_lib:format("SDDBT,~s,f,~s,M,~s,F",Fields)).
 
 %% $PSIMSSB,UTC,B01,A,,C,H,M,X,Y,Z,Acc,N,,
-build_simssb(UTC,Addr,S,Err,CS,FS,X,Y,Z,Acc,AddT,Add1,Add2) ->
+build_simssb(UTC,Addr,S,Err,CS,FS,OX,OY,Z,Acc,AddT,Add1,Add2) ->
   SUTC = utc_format(UTC),
   SS = case S of
          ok -> "A";
          nok -> "V"
        end,
+  {X, Y} =
+  case CS of
+      rgeod ->
+          D2R = math:pi() / 180.0,
+          {OX * D2R, OY * D2R};
+      _ -> {OX, OY}
+  end,
   {SCS,SHS,Fmt,Depth} = case CS of
                 lf -> {<<"C">>,<<"H">>,"~.2.0f",Z};
                 enu -> {<<"C">>,<<"E">>,"~.2.0f",Z};
                 ned -> {<<"C">>,<<"N">>,"~.2.0f",Z};
+                rgeod -> {<<"R">>,<<"N">>,"~.9.0f",-Z};
                 geod -> {<<"R">>,<<"G">>,"~.6.0f",-Z}
         end,
   SFS = case FS of
