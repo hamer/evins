@@ -1138,7 +1138,7 @@ extract_nmea(<<"XDR">>, Params) ->
   try
     BLst = binary:split(Params,<<",">>,[global]),
     Lst = lists:map(fun(Idx) ->
-                        [BType,BData,BUnits,BName] = lists:sublist(BLst, Idx, 4),
+                        [BType,BData,BUnits,BName] = lists:sublist(BLst, 1 + (Idx - 1) * 4, 4),
                         Data = safe_binary_to_float(BData),
                         {binary_to_list(BType), Data, binary_to_list(BUnits), binary_to_list(BName)}
                     end, lists:seq(1, length(BLst) div 4)),
