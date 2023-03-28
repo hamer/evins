@@ -182,7 +182,7 @@ extract_nmea(<<"RMC">>, Params) ->
 %% 14   = Diff. reference station ID#
 extract_nmea(<<"GGA">>, Params) ->
   try
-    [BUTC,BLat,BN,BLon,BE,BQ,BSat,BHDil,BAlt,<<"M">>,BGeoid,<<"M">>,BAge,BID] = binary:split(Params,<<",">>,[global]),
+    [BUTC,BLat,BN,BLon,BE,BQ,BSat,BHDil,BAlt,<<"M">>,BGeoid,_,BAge,BID] = binary:split(Params,<<",">>,[global]),
     [UTC, Lat, Lon] = extract_geodata(BUTC, BLat, BN, BLon, BE),
     [Q,Sat,ID] = [safe_binary_to_integer(X) || X <- [BQ,BSat,BID]],
     [HDil,Alt,Geoid,Age] = [safe_binary_to_float(X) || X <- [BHDil,BAlt,BGeoid,BAge]],
