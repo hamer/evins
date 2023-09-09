@@ -185,7 +185,7 @@ update_cfg(Cfg, TermList) ->
 answer_split(L,Wait,Request,Pid) ->
   case re:run(L,"\r\n") of
     {match, [{_Offset, _}]} ->
-      case re:run(L,"^(RECV(|PBM|IM|IMS),)(p(\\d+),(\\d+)|(\\d+))(,.*)",[dotall,{capture,[1,2,3,4,5,6,7],binary}]) of
+      case re:run(L,"^(RECV(|PBM|IM|IMS|JRP),)(p(\\d+),(\\d+)|(\\d+))(,.*)",[dotall,{capture,[1,2,3,4,5,6,7],binary}]) of
         {match, [Recv,_,_,BPid,BLen,<<>>,Tail]} ->
           recv_extract(L,Recv,binary_to_integer(BLen),Tail,Wait,Request,binary_to_integer(BPid));
         {match, [Recv,_,_,<<>>,<<>>,BLen,Tail]} ->
@@ -515,6 +515,7 @@ recv_extract(L,Brecv,Len,Tail,Wait,Request,Pid) ->
            <<"RECV,">> -> recv;
            <<"RECVIM,">> -> recvim;
            <<"RECVIMS,">> -> recvims;
+           <<"RECVJRP,">> -> recvjrp;
            <<"RECVPBM,">> -> recvpbm
          end,
   try
@@ -522,6 +523,21 @@ recv_extract(L,Brecv,Len,Tail,Wait,Request,Pid) ->
   catch
     error:_ -> [{error, {binaryParseError, Recv, Tail}}]
   end.
+
+% RECVJRP,len,usec,dur,janus_rssi,vel,data\r\n
+recv_extract_helper(L,recvjrp,Len,Tail,Wait,Request,Pid) ->
+  {match, [Busec,Bdur,Br,Bv,PTail]} = re:run(Tail,"^,([^,]*),([^,]*),([^,]*),([^,]*),(.*)",[dotall,{capture,[1,2,3,4,5],binary}]),
+  PLLen = byte_size(PTail),
+  if
+    Len + 2 =< PLLen ->
+      {match, [Payload, Tail1]} = re:run(PTail, "^(.{" ++ integer_to_list(Len) ++ "})\r\n(.*)",[dotall,{capture,[1,2],binary}]),
+      [Usec,Dur] = [binary_to_integer(X) || X <- [Busec,Bdur]],
+      [R,V] = [binary_to_float(X) || X <- [Br,Bv]],
+      Rcv = {recvjrp,Len,Usec,Dur,R,V,Payload},
+      [{async, Rcv} | answer_split(Tail1,Wait,Request,Pid)];
+    true ->
+      [{more, L}]
+  end;
 
 %% RECVPBM,len,src,dst,dur,rssi,int,vel,data\r\n             RECVPBM,len,([^,]*,){6}.{len}\r\n
 recv_extract_helper(L,recvpbm,Len,Tail,Wait,Request,Pid) ->
@@ -616,6 +632,7 @@ from_term(Term, #{txtime := TXTime} = Cfg) ->
 %% {at,"*SENDIM",dst,flag,data}  {at,{pid,Pid},"*SENDIM",dst,flag,data}  
 %% {at,"*SENDIMS",dst,usec,data} {at,{pid,Pid},"*SENDIMS",dst,usec,data} 
 %% {at,"*SENDPBM",dst,data}      {at,{pid,Pid},"*SENDPBM",dst,data}
+%% {at,"*SENDJRP",data}
 %% {at,"*SENDPROBE",bit_value,follow_flag,usec}
 %% {at,"req","params"}
 %% {at,help,"req"}
@@ -625,6 +642,9 @@ from_term(Term, #{txtime := TXTime} = Cfg) ->
 %% запятой от строки параметров отделаютсятя только send параметры
 from_term_priv({raw,Data}, Cfg) when is_binary(Data) -> 
   [Data, Cfg];
+from_term_priv({at,"O",[]}, #{filter := Filter, mode := Mode} = Cfg) when Filter == at,
+                                      Mode == data ->
+  [<<>>, Cfg];
 from_term_priv(Term, #{pid := Pid, filter := Filter, eol := EOL} = Cfg) ->
   %% io:format("Term = ~p~n",[Term]),
   {Request, Wait, Telegram} = from_term_helper(Term, Pid, Filter),
@@ -669,6 +689,10 @@ from_term_helper({at,"*SENDPROBE",V,Flag,Usec},_,_) ->
             none -> ""
           end,
   {"*SENDPROBE", singleline, ["AT*SENDPROBE,",integer_to_binary(V),$,,integer_to_binary(Flag),$,,SUsec]};
+%% {at,"*SENDJRP",data}
+from_term_helper({at,"*SENDJRP",Data},_,_) ->
+  {"*SENDJRP", singleline,
+   ["AT*SENDJRP,", integer_to_binary(byte_size(Data)), ",", Data]};
 %% other {at,...} terms
 from_term_helper({at,"$",Req,_}, _, _) ->
   {"$", multiline,
