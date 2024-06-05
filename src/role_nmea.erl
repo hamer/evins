@@ -1088,6 +1088,34 @@ extract_nmea(<<"EVOCTL">>, <<"QLBL,CAL,",Params/binary>>) ->
   catch
     error:_ ->{error, {parseError, evoctl, Params}}
   end;
+extract_nmea(<<"EVOCTL">>, <<"HOPS,",Params/binary>>) ->
+  case binary:split(Params,<<",">>,[global]) of
+    [<<"config:",Cmd/binary>>] ->
+      Config_value =
+      case catch binary_to_integer(Cmd, 16) of
+          {'EXIT',_} -> binary_to_atom(Cmd,latin1);
+          Val -> Val
+      end,
+      {nmea, {evoctl, hops, #{config => Config_value}}};
+    [Cmd] ->
+      {nmea, {evoctl, hops, #{command => binary_to_atom(Cmd,latin1)}}};
+    Lst ->
+      Pairs = fun FS([]) -> [];
+                  FS([_]) -> [];
+                  FS([X, Y | Rest]) ->
+                    V =
+                    case catch binary_to_integer(Y) of {'EXIT',_} ->
+                    case catch binary_to_float(Y) of {'EXIT',_} ->
+                    case catch [binary_to_integer(I) || I <- binary:split(Y,<<":">>,[global])] of {'EXIT',_} ->
+                    case catch [binary_to_float(I) || I <- binary:split(Y,<<":">>,[global])] of {'EXIT',_} ->
+                        binary_to_atom(Y,latin1) end;
+                    V1 -> V1 end;
+                    V2 -> V2 end;
+                    V3 -> V3 end,
+                    [{binary_to_atom(X,latin1), V} | FS(Rest)]
+              end,
+      {nmea, {evoctl, hops, maps:from_list(Pairs(Lst))}}
+  end;
 extract_nmea(<<"EVOCTL">>, Params) ->
   {error, {parseError, evoctl, Params}};
 
