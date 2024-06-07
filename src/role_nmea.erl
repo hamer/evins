@@ -1758,7 +1758,26 @@ build_evoctl(qlbl, #{command := reset}) ->
   ["PEVOCTL,QLBL,RST"];
 build_evoctl(qlbl, #{frame := Frame, command := calibrate}) ->
   ["PEVOCTL,QLBL,CAL",
-   safe_fmt(["~p"],[Frame],",")].
+   safe_fmt(["~p"],[Frame],",")];
+build_evoctl(p, Protocol) ->
+  ["PEVOCTL,P,", string:uppercase(atom_to_list(Protocol))];
+build_evoctl(hops, #{config := Config_value}) ->
+  ["PEVOCTL,HOPS", safe_fmt(["config:~p"],[Config_value],",")];
+build_evoctl(hops, #{command := Cmd}) ->
+  ["PEVOCTL,HOPS,", atom_to_list(Cmd)];
+build_evoctl(hops, Map) when is_map(Map) ->
+  ["PEVOCTL,HOPS",
+      lists:map(fun ({K,V}) when is_number(V) ->
+                      io_lib:format(",~p,~B",[K,V]);
+                    ({K,V}) when is_list(V) ->
+                      io_lib:format(",~p,~s",[K,string:join([hd(io_lib:format("~p",[I])) || I <- V],":")]);
+                    ({K,nothing}) ->
+                      io_lib:format(",~p,",[K]);
+                    ({K,#{lat := Lat, lon := Lon}}) ->
+                      io_lib:format(",~p,~.7.0f:~.7.0f",[K,Lat,Lon]);
+                    ({K,V}) ->
+                      io_lib:format(",~p,~p",[K,V])
+                  end, maps:to_list(Map))].
 
 %% $-EVORCT,TX,TX_phy,Lat,LatS,Lon,LonS,Alt,S_gps,Pressure,S_pressure,Yaw,Pitch,Roll,S_ahrs,LAx,LAy,LAz,HL
 build_evorct(TX_utc,TX_phy,{Lat,Lon,Alt,GPSS},{P,PS},{Yaw,Pitch,Roll,AHRSS},{Lx,Ly,Lz},HL) ->
@@ -2098,6 +2117,8 @@ from_term_helper(Sentense) ->
       build_evoctl(slbl, Args);
     {evoctl, ref, Args} ->
       build_evoctl(ref, Args);
+    {evoctl, hops, Args} ->
+      build_evoctl(hops, Args);
     {evoerr, Report} ->
       build_evoerr(Report);
     {hdg,Heading,Dev,Var} ->
