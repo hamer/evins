@@ -1108,7 +1108,8 @@ extract_nmea(<<"EVOCTL">>, <<"HOPS,",Params/binary>>) ->
                     case catch binary_to_float(Y) of {'EXIT',_} ->
                     case catch [binary_to_integer(I) || I <- binary:split(Y,<<":">>,[global])] of {'EXIT',_} ->
                     case catch [binary_to_float(I) || I <- binary:split(Y,<<":">>,[global])] of {'EXIT',_} ->
-                        binary_to_atom(Y,latin1) end;
+                        binary_to_atom(Y,latin1);
+                    V0 -> V0 end;
                     V1 -> V1 end;
                     V2 -> V2 end;
                     V3 -> V3 end,
